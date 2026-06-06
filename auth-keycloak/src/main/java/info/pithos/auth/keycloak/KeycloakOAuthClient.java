@@ -10,7 +10,7 @@ import info.pithos.auth.model.TokenType;
 import info.pithos.auth.model.UserInfo;
 import info.pithos.runtime.core.context.ApplicationContext;
 import info.pithos.runtime.model.config.Config.KeycloakOAuthConfigs;
-import info.pithos.runtime.model.protocol.http.RequestContextOuterClass.RequestContext;
+import info.pithos.runtime.model.protocol.http.Context.RequestContext;
 import org.keycloak.OAuth2Constants;
 import org.keycloak.admin.client.Keycloak;
 import org.keycloak.admin.client.KeycloakBuilder;

@@ -12,7 +12,7 @@ import info.pithos.auth.model.TokenType;
 import info.pithos.auth.model.UserInfo;
 import info.pithos.runtime.core.context.ApplicationContext;
 import info.pithos.runtime.model.config.Config.GcpIdentityOAuthConfigs;
-import info.pithos.runtime.model.protocol.http.RequestContextOuterClass.RequestContext;
+import info.pithos.runtime.model.protocol.http.Context.RequestContext;
 
 import java.net.URI;
 import java.net.URLEncoder;
