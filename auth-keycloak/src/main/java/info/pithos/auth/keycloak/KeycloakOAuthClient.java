@@ -89,6 +89,21 @@ public class KeycloakOAuthClient extends AbstractOAuthClient {
     }
 
     @Override
+    public CompletableFuture<TokenResponse> login(RequestContext requestContext, String username, String password) {
+        return submitAsync(() -> {
+            String body = buildForm(
+                OidcConstants.GRANT_TYPE, OAuth2Constants.PASSWORD,
+                "username", username,
+                "password", password,
+                OidcConstants.CLIENT_ID, configs.getClientId(),
+                OidcConstants.CLIENT_SECRET, configs.getClientSecret()
+            );
+            JsonNode json = postToTokenEndpoint(body);
+            return parseTokenResponse(json);
+        });
+    }
+
+    @Override
     public CompletableFuture<TokenResponse> refreshToken(RequestContext requestContext, String refreshToken) {
         return submitAsync(() -> {
             String body = buildForm(

@@ -16,6 +16,8 @@ public interface OAuthClient extends ServiceLifeCycle {
 
     CompletableFuture<TokenResponse> clientCredentialsGrant(RequestContext requestContext, List<String> scopes);
 
+    CompletableFuture<TokenResponse> login(RequestContext requestContext, String username, String password);
+
     // --- Token lifecycle ---
 
     CompletableFuture<TokenResponse> refreshToken(RequestContext requestContext, String refreshToken);

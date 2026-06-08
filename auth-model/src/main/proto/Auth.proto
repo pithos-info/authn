@@ -1,0 +1,21 @@
+syntax = "proto3";
+
+package info.pithos.auth.model;
+
+message LoginRequest {
+  string username = 1;
+  string password = 2;
+  repeated string scopes = 3;
+}
+
+message LoginResponse {
+  string accessToken = 1;
+  string refreshToken = 2;
+  int64 expiresIn = 3;
+  string tokenType = 4;
+  string scope = 5;
+}
+
+service AuthService {
+  rpc Login(LoginRequest) returns (LoginResponse);
+}

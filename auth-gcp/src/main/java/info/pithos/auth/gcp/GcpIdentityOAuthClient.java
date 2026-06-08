@@ -74,6 +74,13 @@ public class GcpIdentityOAuthClient extends AbstractOAuthClient {
     }
 
     @Override
+    public CompletableFuture<TokenResponse> login(RequestContext requestContext, String username, String password) {
+        // GCP Identity Platform does not support Resource Owner Password Credentials grant.
+        // Delegate to clientCredentialsGrant using the currently loaded service-account credentials.
+        return clientCredentialsGrant(requestContext, List.of());
+    }
+
+    @Override
     public CompletableFuture<TokenResponse> clientCredentialsGrant(RequestContext requestContext, List<String> scopes) {
         return submitAsync(() -> {
             GoogleCredentials creds = credentials();
