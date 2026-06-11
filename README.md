@@ -11,7 +11,7 @@ Proto source: `auth-model/src/main/proto/Auth.proto`
 
 | Message | Fields |
 |---|---|
-| `LoginRequest` | `username`, `password`, `scopes` (repeated) |
+| `LoginRequest` | `username`, `password`, `scopes` (repeated), `idToken` |
 | `LoginResponse` | `accessToken`, `refreshToken`, `expiresIn`, `tokenType`, `scope` |
 
 gRPC service: `AuthService` with a single `Login(LoginRequest) returns (LoginResponse)` RPC. The generated `AuthServiceGrpc` stub is the base class used by `service-container` to expose this operation over gRPC.
@@ -30,7 +30,7 @@ Operations:
 
 | Group | Methods |
 |---|---|
-| Token acquisition | `clientCredentialsGrant`, `login` |
+| Token acquisition | `clientCredentialsGrant`, `login`, `loginWithIdToken` |
 | Token lifecycle | `refreshToken`, `revokeToken` |
 | Token validation | `introspectToken` |
 | Identity | `getUserInfo` |
@@ -49,18 +49,18 @@ Keycloak implementation of `OAuthClient`. Java package: `info.pithos.auth.keyclo
 
 Uses `keycloak-admin-client` (`KeycloakBuilder` + `TokenManager.grantToken()`) for client-credentials token acquisition and `quarkus-oidc-client` (`OidcConstants`) for standard OIDC endpoint paths. All other endpoints (`/token`, `/introspect`, `/userinfo`, `/revoke`) are called via Java's built-in `HttpClient` using the OIDC standard paths provided by `quarkus-oidc-client`.
 
-Config proto: `KeycloakOAuthConfigs` (`serverUrl`, `realm`, `clientId`, `clientSecret`, `timeoutMs`)
+Config proto: `KeycloakOAuthConfigs` (`serverUrl`, `realm`, `clientId`, `clientSecret`, `timeoutMs`, `idpAlias`)
 
 `introspectToken` returns `null` for `enterpriseId` — OAuth tokens do not carry enterprise-scoped identity; `enterpriseId` is populated instead from the `X-Enterprise-Id` request header by the service container layer.
 
-`login` uses the Resource Owner Password Credentials grant (`grant_type=password`) against the Keycloak token endpoint. `refreshToken` calls the token endpoint directly with the provided refresh token. `revokeToken` accepts a `TokenType` hint (`ACCESS` or `REFRESH`) and posts to the revocation endpoint. `introspectToken` returns realm roles from `realm_access.roles`.
+`login` uses the Resource Owner Password Credentials grant (`grant_type=password`) against the Keycloak token endpoint. `loginWithIdToken` uses the RFC 8693 token-exchange grant (`grant_type=urn:ietf:params:oauth:grant-type:token-exchange`, `subject_token_type=urn:ietf:params:oauth:token-type:id_token`) — it exchanges a Google (or other external) ID token for a Keycloak access + refresh token pair. The `idpAlias` config field must match the identity provider alias configured in the Keycloak realm. `refreshToken` calls the token endpoint directly with the provided refresh token. `revokeToken` accepts a `TokenType` hint (`ACCESS` or `REFRESH`) and posts to the revocation endpoint. `introspectToken` returns realm roles from `realm_access.roles`.
 
 ### auth-gcp
 GCP Identity implementation of `OAuthClient`. Java package: `info.pithos.auth.gcp`
 
 Uses `google-auth-library-oauth2-http` (`GoogleCredentials` / `ImpersonatedCredentials`) for token acquisition via Application Default Credentials. When `serviceAccountEmail` is set the client uses `ImpersonatedCredentials` to impersonate that service account; otherwise ADC scoped to `defaultScopes` is used directly.
 
-`login` delegates to `clientCredentialsGrant` — GCP Identity Platform does not support the Resource Owner Password Credentials grant. `refreshToken` forces a credential refresh and returns a new access token — GCP service accounts do not use long-lived refresh tokens. `introspectToken` calls the `tokeninfo` endpoint; `getUserInfo` calls the `userinfo` endpoint. Both use Java's built-in `HttpClient`.
+`login` delegates to `clientCredentialsGrant` — GCP Identity Platform does not support the Resource Owner Password Credentials grant. `loginWithIdToken` validates the supplied Google ID token via the `tokeninfo?id_token=` endpoint; if valid it returns the ID token itself as the `accessToken` (with the remaining TTL as `expiresIn`) and no refresh token — the client must re-authenticate with Google on expiry. An invalid or expired ID token throws `UNAUTHORIZED`. `refreshToken` forces a credential refresh and returns a new access token — GCP service accounts do not use long-lived refresh tokens. `introspectToken` calls the `tokeninfo` endpoint; `getUserInfo` calls the `userinfo` endpoint. Both use Java's built-in `HttpClient`.
 
 Config proto: `GcpIdentityOAuthConfigs` (`projectId`, `serviceAccountEmail`, `defaultScopes`)
 
@@ -77,6 +77,7 @@ message KeycloakOAuthConfigs {
   string clientId = 3;
   string clientSecret = 4;
   int32 timeoutMs = 5;
+  string idpAlias = 6;
 }
 
 message GcpIdentityOAuthConfigs {
@@ -114,10 +115,15 @@ TokenResponse token = client.clientCredentialsGrant(requestContext, List.of("ope
 // User login: Resource Owner Password Credentials grant (Keycloak only)
 TokenResponse userToken = client.login(requestContext, "alice", "secret").join();
 
-client.introspectToken(requestContext, userToken.accessToken())
+// User login: Google ID token (browser / SPA / mobile — client already has a Google id_token)
+// GCP: validates via tokeninfo, returns the id_token itself as accessToken (no refresh token)
+// Keycloak: exchanges via token-exchange grant, returns Keycloak access + refresh tokens
+TokenResponse googleUserToken = client.loginWithIdToken(requestContext, googleIdToken).join();
+
+client.introspectToken(requestContext, googleUserToken.accessToken())
       .thenAccept(info -> System.out.println("active: " + info.active()));
 
-client.getUserInfo(requestContext, userToken.accessToken())
+client.getUserInfo(requestContext, googleUserToken.accessToken())
       .thenAccept(u -> System.out.println("user: " + u.email()));
 
 // 5. Shut down gracefully

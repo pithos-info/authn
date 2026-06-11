@@ -11,6 +11,8 @@ import info.pithos.auth.model.TokenResponse;
 import info.pithos.auth.model.TokenType;
 import info.pithos.auth.model.UserInfo;
 import info.pithos.runtime.core.context.ApplicationContext;
+import info.pithos.runtime.core.context.ErrorCode;
+import info.pithos.runtime.core.context.ServiceException;
 import info.pithos.runtime.model.config.Config.GcpIdentityOAuthConfigs;
 import info.pithos.runtime.model.protocol.Context.RequestContext;
 
@@ -78,6 +80,25 @@ public class GcpIdentityOAuthClient extends AbstractOAuthClient {
         // GCP Identity Platform does not support Resource Owner Password Credentials grant.
         // Delegate to clientCredentialsGrant using the currently loaded service-account credentials.
         return clientCredentialsGrant(requestContext, List.of());
+    }
+
+    @Override
+    public CompletableFuture<TokenResponse> loginWithIdToken(RequestContext requestContext, String idToken) {
+        return submitAsync(() -> {
+            String url = TOKEN_INFO_URL + "?id_token=" + URLEncoder.encode(idToken, StandardCharsets.UTF_8);
+            HttpResponse<String> response = send(HttpRequest.newBuilder()
+                .uri(URI.create(url))
+                .GET()
+                .build());
+            JsonNode json = objectMapper.readTree(response.body());
+            if (json.has("error")) {
+                throw new ServiceException(ErrorCode.UNAUTHORIZED,
+                    "invalid or expired id_token: " + json.path("error_description").asText(json.path("error").asText()));
+            }
+            long exp = json.path("exp").asLong(0);
+            long expiresIn = Math.max(0, exp - System.currentTimeMillis() / 1000);
+            return new TokenResponse(idToken, null, expiresIn, "Bearer", json.path("scope").asText(""));
+        });
     }
 
     @Override

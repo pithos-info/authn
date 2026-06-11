@@ -9,6 +9,8 @@ import info.pithos.auth.model.TokenResponse;
 import info.pithos.auth.model.TokenType;
 import info.pithos.auth.model.UserInfo;
 import info.pithos.runtime.core.context.ApplicationContext;
+import info.pithos.runtime.core.context.ErrorCode;
+import info.pithos.runtime.core.context.ServiceException;
 import info.pithos.runtime.model.config.Config.KeycloakOAuthConfigs;
 import info.pithos.runtime.model.protocol.Context.RequestContext;
 import org.keycloak.OAuth2Constants;
@@ -99,6 +101,26 @@ public class KeycloakOAuthClient extends AbstractOAuthClient {
                 OidcConstants.CLIENT_SECRET, configs.getClientSecret()
             );
             JsonNode json = postToTokenEndpoint(body);
+            return parseTokenResponse(json);
+        });
+    }
+
+    @Override
+    public CompletableFuture<TokenResponse> loginWithIdToken(RequestContext requestContext, String idToken) {
+        return submitAsync(() -> {
+            String body = buildForm(
+                OidcConstants.GRANT_TYPE, "urn:ietf:params:oauth:grant-type:token-exchange",
+                "subject_token", idToken,
+                "subject_token_type", "urn:ietf:params:oauth:token-type:id_token",
+                "subject_issuer", configs.getIdpAlias(),
+                OidcConstants.CLIENT_ID, configs.getClientId(),
+                OidcConstants.CLIENT_SECRET, configs.getClientSecret()
+            );
+            JsonNode json = postToTokenEndpoint(body);
+            if (json.has("error")) {
+                throw new ServiceException(ErrorCode.UNAUTHORIZED,
+                    "token exchange failed: " + json.path("error_description").asText(json.path("error").asText()));
+            }
             return parseTokenResponse(json);
         });
     }
