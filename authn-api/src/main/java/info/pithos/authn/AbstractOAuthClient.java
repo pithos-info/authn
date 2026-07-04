@@ -17,11 +17,13 @@
 package info.pithos.authn;
 
 import info.pithos.runtime.core.context.ApplicationContext;
+import info.pithos.runtime.core.log.ServiceLogger;
 import info.pithos.runtime.core.metrics.InfraOperation;
 import info.pithos.runtime.core.metrics.MetricsCommitter;
 import info.pithos.runtime.model.metrics.Metrics.ComponentType;
 import info.pithos.runtime.model.metrics.Metrics.MetricEvent;
 import info.pithos.runtime.model.metrics.Metrics.MetricUnit;
+import info.pithos.runtime.model.protocol.Context.LogLevelType;
 import info.pithos.runtime.model.protocol.Context.RequestContext;
 
 import java.util.concurrent.Callable;
@@ -55,6 +57,12 @@ public abstract class AbstractOAuthClient implements OAuthClient {
         String provider = componentProvider();
         emitPair(mc, rc, componentId(), provider, op, elapsedMs, ex);
         emitPair(mc, rc, provider, provider, op, elapsedMs, ex);
+        ServiceLogger log = context.getSystemContext().getLogger();
+        if (ex == null) {
+            log.logRequest(rc, getClass(), LogLevelType.DEBUG, "{} {} {}ms", op.stem(), componentId(), elapsedMs);
+        } else {
+            log.logRequest(rc, getClass(), LogLevelType.ERROR, ex, "{} {} failed after {}ms", op.stem(), componentId(), elapsedMs);
+        }
     }
 
     private static void emitPair(MetricsCommitter mc, RequestContext rc, String componentId, String provider,
