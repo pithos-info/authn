@@ -101,6 +101,62 @@ Config proto: `GcpIdentityOAuthConfigs` (`projectId`, `serviceAccountEmail`, `de
 
 ---
 
+## Metrics
+
+Every `OAuthClient` operation emits infra-tier metrics automatically via `MetricsCommitter`. No caller instrumentation required.
+
+### AuthNOperation
+
+| Enum value | Metric stem |
+|---|---|
+| `CLIENT_CREDENTIALS_GRANT` | `authn.client.credentials` |
+| `LOGIN` | `authn.login` |
+| `LOGIN_ID_TOKEN` | `authn.login.idtoken` |
+| `REFRESH_TOKEN` | `authn.token.refresh` |
+| `REVOKE_TOKEN` | `authn.token.revoke` |
+| `INTROSPECT_TOKEN` | `authn.token.introspect` |
+| `GET_USER_INFO` | `authn.userinfo` |
+
+`GcpIdentityOAuthClient.login()` delegates to `clientCredentialsGrant()` and is not instrumented separately to avoid double-counting.
+
+### What is emitted per operation
+
+Each operation fires **4 metric events** across two levels:
+
+| Level | `componentId` | Example |
+|---|---|---|
+| Per tenant | Realm name (Keycloak) or project ID (GCP) | `"pithos-dev"` |
+| Provider aggregate | Provider name | `"keycloak"` or `"gcp-identity"` |
+
+At each level:
+1. `{op}.latency` — `MetricUnit.MS`
+2. `{op}.success` / `{op}.failure` / `{op}.timeout` — `MetricUnit.COUNT`
+
+| Field | Value |
+|---|---|
+| `componentType` | `AUTH` |
+| `componentId` | realm (Keycloak) or projectId (GCP) |
+| `componentProvider` | `"keycloak"` or `"gcp-identity"` |
+| `RequestContext` | passed through from the caller |
+
+### Example: `introspectToken(rc, token)` via Keycloak (realm `"pithos-dev"`)
+
+| metric | unit | componentId | componentProvider |
+|---|---|---|---|
+| `authn.token.introspect.latency` | MS | `pithos-dev` | `keycloak` |
+| `authn.token.introspect.success` | COUNT | `pithos-dev` | `keycloak` |
+| `authn.token.introspect.latency` | MS | `keycloak` | `keycloak` |
+| `authn.token.introspect.success` | COUNT | `keycloak` | `keycloak` |
+
+### componentProvider values
+
+| Implementation | `componentProvider` | `componentId` |
+|---|---|---|
+| `KeycloakOAuthClient` | `"keycloak"` | `configs.getRealm()` |
+| `GcpIdentityOAuthClient` | `"gcp-identity"` | `configs.getProjectId()` |
+
+---
+
 ## Config.proto
 
 Two messages added to `Config.proto` and registered on `ConfigMap` (fields 17 and 18):

@@ -22,6 +22,7 @@ import com.google.auth.oauth2.AccessToken;
 import com.google.auth.oauth2.GoogleCredentials;
 import com.google.auth.oauth2.ImpersonatedCredentials;
 import info.pithos.authn.AbstractOAuthClient;
+import info.pithos.authn.AuthNOperation;
 import info.pithos.authn.model.TokenIntrospection;
 import info.pithos.authn.model.TokenResponse;
 import info.pithos.authn.model.TokenType;
@@ -71,6 +72,9 @@ public class GcpIdentityOAuthClient extends AbstractOAuthClient {
         this.configs = context.getSystemContext().getConfigMap().getGcpIdentityOAuthConfigs();
     }
 
+    @Override protected String componentProvider() { return "gcp-identity"; }
+    @Override protected String componentId() { return configs.getProjectId(); }
+
     @Override
     public CompletableFuture<Boolean> start(long timeout, TimeUnit unit) {
         return submitAsync(() -> {
@@ -113,6 +117,7 @@ public class GcpIdentityOAuthClient extends AbstractOAuthClient {
 
     @Override
     public CompletableFuture<TokenResponse> loginWithIdToken(RequestContext requestContext, String idToken) {
+        long startMs = System.currentTimeMillis();
         return submitAsync(() -> {
             JsonNode payload = decodeJwtPayload(idToken);
             if (isFirebaseToken(payload)) {
@@ -135,11 +140,12 @@ public class GcpIdentityOAuthClient extends AbstractOAuthClient {
             long exp = json.path("exp").asLong(0);
             long expiresIn = Math.max(0, exp - System.currentTimeMillis() / 1000);
             return new TokenResponse(idToken, null, expiresIn, "Bearer", json.path("scope").asText(""));
-        });
+        }).whenComplete((v, ex) -> recordOp(requestContext, AuthNOperation.LOGIN_ID_TOKEN, startMs, ex));
     }
 
     @Override
     public CompletableFuture<TokenResponse> clientCredentialsGrant(RequestContext requestContext, List<String> scopes) {
+        long startMs = System.currentTimeMillis();
         return submitAsync(() -> {
             GoogleCredentials creds = credentials();
             if (!scopes.isEmpty()) {
@@ -147,22 +153,24 @@ public class GcpIdentityOAuthClient extends AbstractOAuthClient {
             }
             creds.refreshIfExpired();
             return toTokenResponse(creds);
-        });
+        }).whenComplete((v, ex) -> recordOp(requestContext, AuthNOperation.CLIENT_CREDENTIALS_GRANT, startMs, ex));
     }
 
     @Override
     public CompletableFuture<TokenResponse> refreshToken(RequestContext requestContext, String refreshToken) {
         // GCP service accounts use short-lived tokens refreshed via the credential directly;
         // the provided refreshToken is ignored in favour of the current credential's refresh flow.
+        long startMs = System.currentTimeMillis();
         return submitAsync(() -> {
             GoogleCredentials creds = credentials();
             creds.refresh();
             return toTokenResponse(creds);
-        });
+        }).whenComplete((v, ex) -> recordOp(requestContext, AuthNOperation.REFRESH_TOKEN, startMs, ex));
     }
 
     @Override
     public CompletableFuture<Void> revokeToken(RequestContext requestContext, String token, TokenType tokenType) {
+        long startMs = System.currentTimeMillis();
         return submitAsync(() -> {
             String body = "token=" + URLEncoder.encode(token, StandardCharsets.UTF_8);
             send(HttpRequest.newBuilder()
@@ -170,12 +178,13 @@ public class GcpIdentityOAuthClient extends AbstractOAuthClient {
                 .header("Content-Type", "application/x-www-form-urlencoded")
                 .POST(HttpRequest.BodyPublishers.ofString(body))
                 .build());
-            return null;
-        });
+            return (Void) null;
+        }).whenComplete((v, ex) -> recordOp(requestContext, AuthNOperation.REVOKE_TOKEN, startMs, ex));
     }
 
     @Override
     public CompletableFuture<TokenIntrospection> introspectToken(RequestContext requestContext, String token) {
+        long startMs = System.currentTimeMillis();
         return submitAsync(() -> {
             JsonNode payload = decodeJwtPayload(token);
             if (isFirebaseToken(payload)) {
@@ -214,11 +223,12 @@ public class GcpIdentityOAuthClient extends AbstractOAuthClient {
                 json.path("scope").asText(null),
                 List.of()
             );
-        });
+        }).whenComplete((v, ex) -> recordOp(requestContext, AuthNOperation.INTROSPECT_TOKEN, startMs, ex));
     }
 
     @Override
     public CompletableFuture<UserInfo> getUserInfo(RequestContext requestContext, String accessToken) {
+        long startMs = System.currentTimeMillis();
         return submitAsync(() -> {
             HttpResponse<String> response = send(HttpRequest.newBuilder()
                 .uri(URI.create(USER_INFO_URL))
@@ -238,7 +248,7 @@ public class GcpIdentityOAuthClient extends AbstractOAuthClient {
                 json.path("email").asText(null),
                 List.copyOf(groups)
             );
-        });
+        }).whenComplete((v, ex) -> recordOp(requestContext, AuthNOperation.GET_USER_INFO, startMs, ex));
     }
 
     // --- Firebase helpers ---

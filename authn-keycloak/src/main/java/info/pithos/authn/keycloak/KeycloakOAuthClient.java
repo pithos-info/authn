@@ -20,6 +20,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.quarkus.oidc.common.runtime.OidcConstants;
 import info.pithos.authn.AbstractOAuthClient;
+import info.pithos.authn.AuthNOperation;
 import info.pithos.authn.model.TokenIntrospection;
 import info.pithos.authn.model.TokenResponse;
 import info.pithos.authn.model.TokenType;
@@ -63,6 +64,9 @@ public class KeycloakOAuthClient extends AbstractOAuthClient {
         this.configs = context.getSystemContext().getConfigMap().getKeycloakOAuthConfigs();
     }
 
+    @Override protected String componentProvider() { return "keycloak"; }
+    @Override protected String componentId() { return configs.getRealm(); }
+
     @Override
     public CompletableFuture<Boolean> start(long timeout, TimeUnit unit) {
         return submitAsync(() -> {
@@ -94,6 +98,7 @@ public class KeycloakOAuthClient extends AbstractOAuthClient {
 
     @Override
     public CompletableFuture<TokenResponse> clientCredentialsGrant(RequestContext requestContext, List<String> scopes) {
+        long startMs = System.currentTimeMillis();
         return submitAsync(() -> {
             AccessTokenResponse resp = keycloak().tokenManager().grantToken();
             return new TokenResponse(
@@ -103,11 +108,12 @@ public class KeycloakOAuthClient extends AbstractOAuthClient {
                 resp.getTokenType(),
                 resp.getScope()
             );
-        });
+        }).whenComplete((v, ex) -> recordOp(requestContext, AuthNOperation.CLIENT_CREDENTIALS_GRANT, startMs, ex));
     }
 
     @Override
     public CompletableFuture<TokenResponse> login(RequestContext requestContext, String username, String password) {
+        long startMs = System.currentTimeMillis();
         return submitAsync(() -> {
             String body = buildForm(
                 OidcConstants.GRANT_TYPE, OAuth2Constants.PASSWORD,
@@ -118,11 +124,12 @@ public class KeycloakOAuthClient extends AbstractOAuthClient {
             );
             JsonNode json = postToTokenEndpoint(body);
             return parseTokenResponse(json);
-        });
+        }).whenComplete((v, ex) -> recordOp(requestContext, AuthNOperation.LOGIN, startMs, ex));
     }
 
     @Override
     public CompletableFuture<TokenResponse> loginWithIdToken(RequestContext requestContext, String idToken) {
+        long startMs = System.currentTimeMillis();
         return submitAsync(() -> {
             String body = buildForm(
                 OidcConstants.GRANT_TYPE, "urn:ietf:params:oauth:grant-type:token-exchange",
@@ -138,11 +145,12 @@ public class KeycloakOAuthClient extends AbstractOAuthClient {
                     "token exchange failed: " + json.path("error_description").asText(json.path("error").asText()));
             }
             return parseTokenResponse(json);
-        });
+        }).whenComplete((v, ex) -> recordOp(requestContext, AuthNOperation.LOGIN_ID_TOKEN, startMs, ex));
     }
 
     @Override
     public CompletableFuture<TokenResponse> refreshToken(RequestContext requestContext, String refreshToken) {
+        long startMs = System.currentTimeMillis();
         return submitAsync(() -> {
             String body = buildForm(
                 OidcConstants.GRANT_TYPE, OidcConstants.REFRESH_TOKEN_GRANT,
@@ -152,11 +160,12 @@ public class KeycloakOAuthClient extends AbstractOAuthClient {
             );
             JsonNode json = postToTokenEndpoint(body);
             return parseTokenResponse(json);
-        });
+        }).whenComplete((v, ex) -> recordOp(requestContext, AuthNOperation.REFRESH_TOKEN, startMs, ex));
     }
 
     @Override
     public CompletableFuture<Void> revokeToken(RequestContext requestContext, String token, TokenType tokenType) {
+        long startMs = System.currentTimeMillis();
         return submitAsync(() -> {
             String typeHint = tokenType == TokenType.REFRESH ? "refresh_token" : "access_token";
             String body = buildForm(
@@ -171,12 +180,13 @@ public class KeycloakOAuthClient extends AbstractOAuthClient {
                 .header("Content-Type", "application/x-www-form-urlencoded")
                 .POST(HttpRequest.BodyPublishers.ofString(body))
                 .build());
-            return null;
-        });
+            return (Void) null;
+        }).whenComplete((v, ex) -> recordOp(requestContext, AuthNOperation.REVOKE_TOKEN, startMs, ex));
     }
 
     @Override
     public CompletableFuture<TokenIntrospection> introspectToken(RequestContext requestContext, String token) {
+        long startMs = System.currentTimeMillis();
         return submitAsync(() -> {
             String body = buildForm(
                 "token", token,
@@ -206,11 +216,12 @@ public class KeycloakOAuthClient extends AbstractOAuthClient {
                 json.path(OidcConstants.TOKEN_SCOPE).asText(null),
                 List.copyOf(roles)
             );
-        });
+        }).whenComplete((v, ex) -> recordOp(requestContext, AuthNOperation.INTROSPECT_TOKEN, startMs, ex));
     }
 
     @Override
     public CompletableFuture<UserInfo> getUserInfo(RequestContext requestContext, String accessToken) {
+        long startMs = System.currentTimeMillis();
         return submitAsync(() -> {
             String url = oidcBase() + "/" + PATH_USERINFO;
             HttpResponse<String> response = send(HttpRequest.newBuilder()
@@ -231,7 +242,7 @@ public class KeycloakOAuthClient extends AbstractOAuthClient {
                 json.path("preferred_username").asText(null),
                 List.copyOf(groups)
             );
-        });
+        }).whenComplete((v, ex) -> recordOp(requestContext, AuthNOperation.GET_USER_INFO, startMs, ex));
     }
 
     // --- Helpers ---
