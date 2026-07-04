@@ -73,8 +73,8 @@ public class KeycloakOAuthClient extends AbstractOAuthClient {
             keycloak = KeycloakBuilder.builder()
                 .serverUrl(configs.getServerUrl())
                 .realm(configs.getRealm())
-                .clientId(configs.getClientId())
-                .clientSecret(configs.getClientSecret())
+                .clientId(configs.getCredentials().getClientId())
+                .clientSecret(configs.getCredentials().getClientSecret())
                 .grantType(OAuth2Constants.CLIENT_CREDENTIALS)
                 .build();
             int timeoutMs = configs.getTimeoutMs() > 0 ? configs.getTimeoutMs() : 5000;
@@ -119,8 +119,8 @@ public class KeycloakOAuthClient extends AbstractOAuthClient {
                 OidcConstants.GRANT_TYPE, OAuth2Constants.PASSWORD,
                 "username", username,
                 "password", password,
-                OidcConstants.CLIENT_ID, configs.getClientId(),
-                OidcConstants.CLIENT_SECRET, configs.getClientSecret()
+                OidcConstants.CLIENT_ID, configs.getCredentials().getClientId(),
+                OidcConstants.CLIENT_SECRET, configs.getCredentials().getClientSecret()
             );
             JsonNode json = postToTokenEndpoint(body);
             return parseTokenResponse(json);
@@ -136,8 +136,8 @@ public class KeycloakOAuthClient extends AbstractOAuthClient {
                 "subject_token", idToken,
                 "subject_token_type", "urn:ietf:params:oauth:token-type:id_token",
                 "subject_issuer", configs.getIdpAlias(),
-                OidcConstants.CLIENT_ID, configs.getClientId(),
-                OidcConstants.CLIENT_SECRET, configs.getClientSecret()
+                OidcConstants.CLIENT_ID, configs.getCredentials().getClientId(),
+                OidcConstants.CLIENT_SECRET, configs.getCredentials().getClientSecret()
             );
             JsonNode json = postToTokenEndpoint(body);
             if (json.has("error")) {
@@ -155,8 +155,8 @@ public class KeycloakOAuthClient extends AbstractOAuthClient {
             String body = buildForm(
                 OidcConstants.GRANT_TYPE, OidcConstants.REFRESH_TOKEN_GRANT,
                 OidcConstants.REFRESH_TOKEN_GRANT, refreshToken,
-                OidcConstants.CLIENT_ID, configs.getClientId(),
-                OidcConstants.CLIENT_SECRET, configs.getClientSecret()
+                OidcConstants.CLIENT_ID, configs.getCredentials().getClientId(),
+                OidcConstants.CLIENT_SECRET, configs.getCredentials().getClientSecret()
             );
             JsonNode json = postToTokenEndpoint(body);
             return parseTokenResponse(json);
@@ -171,8 +171,8 @@ public class KeycloakOAuthClient extends AbstractOAuthClient {
             String body = buildForm(
                 "token", token,
                 "token_type_hint", typeHint,
-                OidcConstants.CLIENT_ID, configs.getClientId(),
-                OidcConstants.CLIENT_SECRET, configs.getClientSecret()
+                OidcConstants.CLIENT_ID, configs.getCredentials().getClientId(),
+                OidcConstants.CLIENT_SECRET, configs.getCredentials().getClientSecret()
             );
             String url = oidcBase() + "/" + PATH_REVOKE;
             send(HttpRequest.newBuilder()
@@ -190,8 +190,8 @@ public class KeycloakOAuthClient extends AbstractOAuthClient {
         return submitAsync(() -> {
             String body = buildForm(
                 "token", token,
-                OidcConstants.CLIENT_ID, configs.getClientId(),
-                OidcConstants.CLIENT_SECRET, configs.getClientSecret()
+                OidcConstants.CLIENT_ID, configs.getCredentials().getClientId(),
+                OidcConstants.CLIENT_SECRET, configs.getCredentials().getClientSecret()
             );
             String url = oidcBase() + "/" + PATH_INTROSPECT;
             HttpResponse<String> response = send(HttpRequest.newBuilder()
