@@ -72,9 +72,9 @@ public class KeycloakOAuthClient extends AbstractOAuthClient {
     @Override
     public CompletableFuture<Boolean> start(long timeout, TimeUnit unit) {
         return submitAsync(() -> {
-            resolvedCredentials = configs.getResolveCredential().getVaultPath().isBlank()
+            resolvedCredentials = configs.getCredentials().getResolveCredential().getVaultPath().isBlank()
                 ? resolvedCredentials
-                : context.getSystemContext().resolve(configs.getResolveCredential());
+                : context.getSystemContext().resolve(configs.getCredentials().getResolveCredential());
             keycloak = KeycloakBuilder.builder()
                 .serverUrl(configs.getServerUrl())
                 .realm(configs.getRealm())
