@@ -28,6 +28,7 @@ import info.pithos.authn.model.UserInfo;
 import info.pithos.runtime.core.context.ApplicationContext;
 import info.pithos.runtime.core.context.ErrorCode;
 import info.pithos.runtime.core.context.ServiceException;
+import info.pithos.runtime.model.config.Config.Credentials;
 import info.pithos.runtime.model.config.Config.KeycloakOAuthConfigs;
 import info.pithos.runtime.model.protocol.Context.RequestContext;
 import org.keycloak.OAuth2Constants;
@@ -57,6 +58,7 @@ public class KeycloakOAuthClient extends AbstractOAuthClient {
     private final KeycloakOAuthConfigs configs;
     private volatile Keycloak keycloak;
     private volatile HttpClient httpClient;
+    private volatile Credentials resolvedCredentials;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     public KeycloakOAuthClient(ApplicationContext context) {
@@ -70,11 +72,14 @@ public class KeycloakOAuthClient extends AbstractOAuthClient {
     @Override
     public CompletableFuture<Boolean> start(long timeout, TimeUnit unit) {
         return submitAsync(() -> {
+            resolvedCredentials = configs.getResolveCredential().getVaultPath().isBlank()
+                ? resolvedCredentials
+                : context.getSystemContext().resolve(configs.getResolveCredential());
             keycloak = KeycloakBuilder.builder()
                 .serverUrl(configs.getServerUrl())
                 .realm(configs.getRealm())
-                .clientId(configs.getCredentials().getClientId())
-                .clientSecret(configs.getCredentials().getClientSecret())
+                .clientId(resolvedCredentials.getClientId())
+                .clientSecret(resolvedCredentials.getClientSecret())
                 .grantType(OAuth2Constants.CLIENT_CREDENTIALS)
                 .build();
             int timeoutMs = configs.getTimeoutMs() > 0 ? configs.getTimeoutMs() : 5000;
@@ -119,8 +124,8 @@ public class KeycloakOAuthClient extends AbstractOAuthClient {
                 OidcConstants.GRANT_TYPE, OAuth2Constants.PASSWORD,
                 "username", username,
                 "password", password,
-                OidcConstants.CLIENT_ID, configs.getCredentials().getClientId(),
-                OidcConstants.CLIENT_SECRET, configs.getCredentials().getClientSecret()
+                OidcConstants.CLIENT_ID, resolvedCredentials.getClientId(),
+                OidcConstants.CLIENT_SECRET, resolvedCredentials.getClientSecret()
             );
             JsonNode json = postToTokenEndpoint(body);
             return parseTokenResponse(json);
@@ -136,8 +141,8 @@ public class KeycloakOAuthClient extends AbstractOAuthClient {
                 "subject_token", idToken,
                 "subject_token_type", "urn:ietf:params:oauth:token-type:id_token",
                 "subject_issuer", configs.getIdpAlias(),
-                OidcConstants.CLIENT_ID, configs.getCredentials().getClientId(),
-                OidcConstants.CLIENT_SECRET, configs.getCredentials().getClientSecret()
+                OidcConstants.CLIENT_ID, resolvedCredentials.getClientId(),
+                OidcConstants.CLIENT_SECRET, resolvedCredentials.getClientSecret()
             );
             JsonNode json = postToTokenEndpoint(body);
             if (json.has("error")) {
@@ -155,8 +160,8 @@ public class KeycloakOAuthClient extends AbstractOAuthClient {
             String body = buildForm(
                 OidcConstants.GRANT_TYPE, OidcConstants.REFRESH_TOKEN_GRANT,
                 OidcConstants.REFRESH_TOKEN_GRANT, refreshToken,
-                OidcConstants.CLIENT_ID, configs.getCredentials().getClientId(),
-                OidcConstants.CLIENT_SECRET, configs.getCredentials().getClientSecret()
+                OidcConstants.CLIENT_ID, resolvedCredentials.getClientId(),
+                OidcConstants.CLIENT_SECRET, resolvedCredentials.getClientSecret()
             );
             JsonNode json = postToTokenEndpoint(body);
             return parseTokenResponse(json);
@@ -171,8 +176,8 @@ public class KeycloakOAuthClient extends AbstractOAuthClient {
             String body = buildForm(
                 "token", token,
                 "token_type_hint", typeHint,
-                OidcConstants.CLIENT_ID, configs.getCredentials().getClientId(),
-                OidcConstants.CLIENT_SECRET, configs.getCredentials().getClientSecret()
+                OidcConstants.CLIENT_ID, resolvedCredentials.getClientId(),
+                OidcConstants.CLIENT_SECRET, resolvedCredentials.getClientSecret()
             );
             String url = oidcBase() + "/" + PATH_REVOKE;
             send(HttpRequest.newBuilder()
@@ -190,8 +195,8 @@ public class KeycloakOAuthClient extends AbstractOAuthClient {
         return submitAsync(() -> {
             String body = buildForm(
                 "token", token,
-                OidcConstants.CLIENT_ID, configs.getCredentials().getClientId(),
-                OidcConstants.CLIENT_SECRET, configs.getCredentials().getClientSecret()
+                OidcConstants.CLIENT_ID, resolvedCredentials.getClientId(),
+                OidcConstants.CLIENT_SECRET, resolvedCredentials.getClientSecret()
             );
             String url = oidcBase() + "/" + PATH_INTROSPECT;
             HttpResponse<String> response = send(HttpRequest.newBuilder()
