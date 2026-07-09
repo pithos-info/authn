@@ -7,6 +7,7 @@
     <parent>
         <groupId>info.pithos.authn</groupId>
         <artifactId>info-pithos-authn</artifactId>
+    <name>Pithos Authn</name>
         <version>1.0.0-SNAPSHOT</version>
     </parent>
 
